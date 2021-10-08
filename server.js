@@ -1,8 +1,16 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const bcrypt = require('bcrypt-nodejs');
-const cors = require('cors');
-const knex = require('knex')
+const express = require("express");
+const app = express();
+const cors = require("cors");
+const pool = require("./db");
+
+//const knex = require('knex')
+
+//middleware
+app.use(cors());
+app.use(express.json()); 
+
+
+
 
 const db = knex({
     // Enter your own database information here based on what you created
@@ -89,107 +97,72 @@ const db = knex({
 // };
 
 
-const app = express();
+//get all movies
+app.get("/api/v1/movies", async (req, res) => {
+  try {
+    const allMovies = await pool.query("SELECT * FROM movie");
+    res.json(allMovies.rows);
+  } catch (err) {
+    console.error(err.message);
+  }
+});
 
-app.use(cors())
-app.use(bodyParser.json());
-
-app.get('/', (req, res)=> {
-  res.send(database.users);
-})
-
-app.post('/signin', (req, res) => {
-  db.select('email', 'hash').from('login')
-    .where('email', '=', req.body.email)
-    .then(data => {
-      const isValid = bcrypt.compareSync(req.body.password, data[0].hash);
-      if (isValid) {
-        return db.select('*').from('users')
-          .where('email', '=', req.body.email)
-          .then(user => {
-            res.json(user[0])
-          })
-          .catch(err => res.status(400).json('unable to get user'))
-      } else {
-        res.status(400).json('wrong credentials')
-      }
-    })
-    .catch(err => res.status(400).json('wrong credentials'))
-})
-
-
-
-//ovo ce bit return all movies
-app.get('/api/v1/movies', (req, res) => {
-  const { id } = req.params;
-  db.select('*').from('users').where({id})
-    .then(user => {
-      if (user.length) {
-        res.json(user[0])
-      } else {
-        res.status(400).json('Not found')
-      }
-    })
-    .catch(err => res.status(400).json('error getting user'))
-})
-//ovo ce bit return single movie
-app.get('api/v1/movies/:id', (req, res) => {
+//get a single movie
+app.get("/api/v1/movies/:id", async (req, res) => {
+  try {
     const { id } = req.params;
-    db.select('*').from('users').where({id})
-      .then(user => {
-        if (user.length) {
-          res.json(user[0])
-        } else {
-          res.status(400).json('Not found')
-        }
-      })
-      .catch(err => res.status(400).json('error getting user'))
-  })
+    const movie = await pool.query("SELECT * FROM movie WHERE movie_id = $1",  //more specific
+    [id]);
+    res.json(movie.rows[0]); //gets 1st item
+  } catch (err) {
+    console.error(err.message);
+  }
+});
 
 //add movie
-app.post('/api/v1/movies', (req, res) => {
-  const { email, name, password } = req.body;
-  const hash = bcrypt.hashSync(password);
-    db.transaction(trx => {
-      trx.insert({
-        hash: hash,
-        email: email
-      })
-      .into('login')
-      .returning('email')
-      .then(loginEmail => {
-        return trx('users')
-          .returning('*')
-          .insert({
-            email: loginEmail[0],
-            name: name,
-            joined: new Date()
-          })
-          .then(user => {
-            res.json(user[0]);
-          })
-      })
-      .then(trx.commit)
-      .catch(trx.rollback)
-    })
-    .catch(err => res.status(400).json('unable to register'))
-})
+app.post ("/api/v1/movies" , async (req,res) => {
+  try {
+      const {description} = req.body //creating todo? .. client side
+      const newMovie = await pool.query(
+          "INSERT INTO movie (description) VALUES($1) RETURNING *", //postgres komande $1 je placeholder za description u ovom slucaju
+      [description]); //inserting in db
+      res.json(newMovie.rows[0]); //where data is located at
+  } catch (err) {
+      console.error(err.message);
+  }
+});
 
 //update movie
-app.put('/api/v1/movies/:id ', (req, res) => {
-  const { id } = req.body;
-  db('users').where('id', '=', id)
-  .increment('entries', 1)
-  .returning('entries')
-  .then(entries => {
-    res.json(entries[0]);
-  })
-  .catch(err => res.status(400).json('unable to get entries'))
-})
+app.put("/api/v1/movies/:id", async (req, res) => {
+  try {
+    const { id } = req.params; //id
+    const { description } = req.body; //data 
+    const updateMovie = await pool.query(
+      "UPDATE movie SET description = $1 WHERE movie_id = $2", //most complex
+      [description, id] 
+    );
+
+    res.json("Movie was updated!");
+  } catch (err) {
+    console.error(err.message);
+  }
+});
 
 //delete movie
-app.delete('/api/v1/movies/:id')
+app.delete("/api/v1/movies/:id ", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleteMovie = await pool.query("DELETE FROM movie WHERE movie_id = $1", [
+      id
+    ]); //we just need to know where its located (id)
+    res.json("Movie was deleted!");
+  } catch (err) {
+    console.log(err.message);
+  }
+});
 
-app.listen(3000, ()=> {
-  console.log('app is running on port 3000');
-})
+
+//listens port
+app.listen(5000, () => {
+  console.log("server has started on port 5000");
+});
