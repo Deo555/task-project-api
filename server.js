@@ -1,168 +1,112 @@
-const express = require("express");
-const app = express();
-const cors = require("cors");
-const pool = require("./db");
+const express = require('express');
+const cors = require('cors');
 
-//const knex = require('knex')
+const db = require('./db/connection');
+const port = process.env.PORT || 3001;
+const app = express();
 
 //middleware
+app.use(express.json());
 app.use(cors());
-app.use(express.json()); 
 
 
-
-
-const db = knex({
-    // Enter your own database information here based on what you created
-    client: 'pg',
-    connection: {
-      host : '127.0.0.1',
-      user : '',
-      password : '',
-      database : 'db'
-    }
-  });
-  
-
-// Your goal is to design a RESTful API for a single resource - movies. The API itself should 
-// follow RESTful design principles, using the basic HTTP verbs: GET, POST, PUT, and 
-// DELETE. 
- 
-// You can use this snippet below as basis for database schema, it’s also an example of knex.js 
-// database migration definition.
-
-// exports.up = (knex, Promise) => { 
-//     return knex.schema.createTable('movies', (table) => { 
-//       table.increments(); 
-//       table.string('name').notNullable().unique(); 
-//       table.string('genre').notNullable(); 
-//       table.integer('rating').notNullable(); 
-//       table.boolean('explicit').notNullable(); 
-//     }); 
-//   }; 
-   
-//   exports.down = (knex, Promise) => { 
-//     return knex.schema.dropTable('movies'); 
-//   };
-
-// Add proper configuration for Knex.js with knexfile.js in root of the project. Also, in root of 
-// the project create folder db where you will put your migrations, seeds folders and 
-// connection.js file. Example below: 
- 
-// db 
-// ├── connection.js 
-// ├── migrations 
-// │   ├── 20170817152841_movies.js 
-// └── seeds 
-//     ├── movies_seed.js 
- 
-// connection.js. will well, connect to the database using the appropriate Knex.js configuration 
-// based on the environment (development, production, etc.) you can use example bellow. 
- 
-// const environment = process.env.NODE_ENV || 'development'; 
-// const config = require('../../../knexfile.js')[environment]; 
-// module.exports = require('knex')(config); 
- 
-// Create seed file with  
- 
-// $ knex seed:make movies_seed 
-// Update it to have some sample of data, use example bellow as starting point. 
- 
-// exports.seed = (knex, Promise) => { 
-//   return knex('movies').del() 
-//   .then(() => { 
-//     return knex('movies').insert({ 
-//       name: 'The Land Before Time', 
-//       genre: 'Fantasy', 
-//       rating: 7, 
-//       explicit: false 
-//     }); 
-//   }) 
-//   .then(() => { 
-//     return knex('movies').insert({ 
-//       name: 'Jurassic Park', 
-//       genre: 'Science Fiction', 
-//       rating: 9, 
-//       explicit: true 
-//     }); 
-//   }) 
-//   .then(() => { 
-//     return knex('movies').insert({ 
-//       name: 'Ice Age: Dawn of the Dinosaurs', 
-//       genre: 'Action/Romance', 
-//       rating: 5, 
-//       explicit: false 
-//     }); 
-//   }); 
-// };
+//add movie
+app.post('', (req, res) => {
+	const movie = req.body;
+  console.log (movie, 'movie req')
+	if (movie.title === "" || movie.genre === ""){
+		res.status(400).send({message: 'Required fields are missing'})
+		return;
+	}
+	movie.explicit = (movie.explicit == "true") ? true : false
+	db.insert(movie).into('movies')
+	.then(rows => {
+		res.status(201).send(rows);
+		return;
+	})
+	.catch(err => {
+		console.log(err);
+		res.status(400).send({message: 'integrity violation'})
+		return;
+	})
+});
 
 
 //get all movies
-app.get("/api/v1/movies", async (req, res) => {
-  try {
-    const allMovies = await pool.query("SELECT * FROM movie");
-    res.json(allMovies.rows);
-  } catch (err) {
-    console.error(err.message);
-  }
+app.get('', (req,res) => {
+	db.select('*').from('movies').then(rows => {
+		rows.map(row => {
+			row.explicit = (row.explicit === 0) ? false: true;
+			return row;
+		});
+		res.json(rows);
+	});
 });
+
 
 //get a single movie
-app.get("/api/v1/movies/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const movie = await pool.query("SELECT * FROM movie WHERE movie_id = $1",  //more specific
-    [id]);
-    res.json(movie.rows[0]); //gets 1st item
-  } catch (err) {
-    console.error(err.message);
-  }
+app.get('/:id',(req,res) => {
+
+	db.select('*').from('movies').where('id',req.params.id)
+	.then(rows => {
+		if (rows.length == 0){
+			res.status(404).send({ message: 'No movie found for id'});
+			return;
+
+		}
+		rows.map(row => {
+			row.explicit = (row.explicit === 0) ? false: true;
+			//console.log("Row explicit je " + row.explicit);
+			return row;
+		})
+		res.json(rows[0]);
+	})
+	.catch(err => {
+		res.status(500).send({message: 'Server error'});
+		return;
+	});
 });
 
-//add movie
-app.post ("/api/v1/movies" , async (req,res) => {
-  try {
-      const {description} = req.body //creating todo? .. client side
-      const newMovie = await pool.query(
-          "INSERT INTO movie (description) VALUES($1) RETURNING *", //postgres komande $1 je placeholder za description u ovom slucaju
-      [description]); //inserting in db
-      res.json(newMovie.rows[0]); //where data is located at
-  } catch (err) {
-      console.error(err.message);
-  }
-});
 
 //update movie
-app.put("/api/v1/movies/:id", async (req, res) => {
-  try {
-    const { id } = req.params; //id
-    const { description } = req.body; //data 
-    const updateMovie = await pool.query(
-      "UPDATE movie SET description = $1 WHERE movie_id = $2", //most complex
-      [description, id] 
-    );
+app.put('/:id',(req,res) =>{
+  const movie = req.body;
+  movie.explicit = (movie.explicit == "true") ? true : false
+  db('movies').where('id', req.params.id).update(movie)
+  .then(rows => {
+  	if (rows == 0){
+  		res.status(404).send({ message: 'No movie found for id'});
+  	}
+  	 //console.log("UPDATED " + rows);
+  	 res.json({message: `Successfully updated ${rows} movie(s)`});
+  })
+  .catch(err => {
+  	// console.log("ERR " + err);
 
-    res.json("Movie was updated!");
-  } catch (err) {
-    console.error(err.message);
-  }
+  	 res.status(400).send({message: 'Integrity constraints have been violated'});
+  })
 });
+
 
 //delete movie
-app.delete("/api/v1/movies/:id ", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const deleteMovie = await pool.query("DELETE FROM movie WHERE movie_id = $1", [
-      id
-    ]); //we just need to know where its located (id)
-    res.json("Movie was deleted!");
-  } catch (err) {
-    console.log(err.message);
-  }
+app.delete('/:id',(req,res) => {
+	db('movies').where('id',req.params.id).del()
+	.then(numOfRows => {
+		//console.log(numOfRows)
+		if (numOfRows == 0){
+			res.status(404).send({ message: 'No movie found for id'});
+		}
+		res.json({message: `Successfully deleted ${numOfRows} movie(s)`});
+	})
 });
+
+
 
 
 //listens port
-app.listen(5000, () => {
-  console.log("server has started on port 5000");
+app.listen(port, () => {
+	console.log('Server has started on port 3001');
 });
+
+
+ 
