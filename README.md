@@ -1,10 +1,14 @@
 Task-project za Kantun Devs
 
-Clone this repo
-Run npm install
-Run knex migrate:latest
-Run knex seed:run --env=development
-Run npm start
+1.Clone this repo
+
+2.Run npm install
+
+3.Run knex migrate:latest
+
+4.Run knex seed:run --env=development
+
+5.Run npm start
 
 
 
